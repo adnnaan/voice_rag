@@ -1,0 +1,5 @@
+.env
+saved_chats/
+chroma_db/
+__pycache__/
+.streamlit/
