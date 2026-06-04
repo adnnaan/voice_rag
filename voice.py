@@ -28,7 +28,7 @@ from streamlit_mic_recorder import mic_recorder
 # Configuration setup for caching layer
 EXPORT_DIR = "saved_chats"
 os.makedirs("saved_chats", exist_ok=True)
-os.makedirs(EXPORT_DIR)
+
 
 st.set_page_config(page_title="Voice & Text RAG Chatbot", layout="wide")
 st.title("🎙️ Voice-Enabled Multi-Source RAG Chatbot")
