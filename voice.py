@@ -30,7 +30,7 @@ EXPORT_DIR = "saved_chats"
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Voice & Text RAG Chatbot", layout="wide")
-st.title("🎙️ Voice-Enabled Multi-Source RAG Chatbot (Gemini 3.5-Flash)")
+st.title("Chatbot")
 
 if "answer_cache" not in st.session_state:
     st.session_state.answer_cache = {}
