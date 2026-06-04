@@ -45,9 +45,13 @@ if "voice_query_text" not in st.session_state:
 def load_embedding_model():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from your .env file.")
+        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from your secrets/environment variables.")
         st.stop()
-    return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=api_key)
+    # Ensure google_api_key is explicitly mapped right here:
+    return GoogleGenerativeAIEmbeddings(
+        model="models/text-embedding-004",  # Upgrade to the latest stable embedding model standard
+        google_api_key=api_key
+    )
 
 @st.cache_resource
 def get_native_genai_client():
