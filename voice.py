@@ -14,11 +14,11 @@ from langchain_community.document_loaders import PyPDFLoader, RecursiveUrlLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 
-# Clean, unified standard Google GenAI packages
+# Modern GenAI Package ecosystem for 3.5-flash runtime
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain_core.output_parsers import StrOutputParser
 
-# Native Google GenAI SDK for Safe Multi-modal Audio Handling
+# Upgraded Google GenAI Native Core SDK for Multi-modal Audio Handling
 from google import genai
 from google.genai import types
 
@@ -30,7 +30,7 @@ EXPORT_DIR = "saved_chats"
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Voice & Text RAG Chatbot", layout="wide")
-st.title("🎙️ Voice-Enabled Multi-Source RAG Chatbot")
+st.title("🎙️ Voice-Enabled Multi-Source RAG Chatbot (Gemini 3.5-Flash)")
 
 if "answer_cache" not in st.session_state:
     st.session_state.answer_cache = {}
@@ -44,7 +44,7 @@ if "voice_query_text" not in st.session_state:
 def load_embedding_model():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from your .env file or Streamlit Secrets.")
+        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from your secrets/environment variables.")
         st.stop()
     return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=api_key)
 
@@ -113,7 +113,7 @@ def clean_html_extractor(html: str) -> str:
         
     return clean_text
 
-# Unified Knowledge Base Builder
+# Unified Knowledge Base Builder (with Rate Limit 429 Throttle)
 if process_button:
     if not uploaded_files and not url_input.strip():
         st.sidebar.error("Please upload at least one PDF OR paste a website URL.")
@@ -163,18 +163,35 @@ if process_button:
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200)
             chunks = text_splitter.split_documents(combined_documents)
             
-            sidebar_status.write(f"🤖 Generating cloud vectors for {len(chunks)} pieces...")
-            sidebar_progress.progress(90)
-            
-            # EXPLICIT BINDING: Force live verification key right at the millisecond database building begins
+            # --- EXPLICIT BINDING & RATE LIMIT PROTECTION FOR VECTOR BUILD ---
             live_api_key = os.getenv("GOOGLE_API_KEY")
-            vectordb = Chroma.from_documents(
-                documents=chunks, 
-                embedding=GoogleGenerativeAIEmbeddings(
-                    model="models/gemini-embedding-001",
-                    google_api_key=live_api_key
-                )
+            sidebar_status.write("🤖 Initializing vector workspace...")
+            
+            embed_fn = GoogleGenerativeAIEmbeddings(
+                model="models/gemini-embedding-001",
+                google_api_key=live_api_key
             )
+            
+            # Safe Batch Throttling Loop to prevent 429 Resource Exhausted errors
+            batch_size = 15
+            vectordb = None
+            
+            for i in range(0, len(chunks), batch_size):
+                batch_chunks = chunks[i:i + batch_size]
+                sidebar_status.write(f"🤖 Embedding chunks {i} to {min(i + batch_size, len(chunks))} of {len(chunks)}...")
+                sidebar_progress.progress(int(85 + ((i / len(chunks)) * 12)))
+                
+                if vectordb is None:
+                    vectordb = Chroma.from_documents(
+                        documents=batch_chunks,
+                        embedding=embed_fn
+                    )
+                else:
+                    vectordb.add_documents(documents=batch_chunks)
+                
+                # Take a small pause to stay cleanly under free tier per-minute thresholds
+                time.sleep(1.0)
+            
             st.session_state.retriever = vectordb.as_retriever(search_kwargs={"k": 4})
             st.session_state.answer_cache.clear()
             
@@ -216,16 +233,16 @@ def check_txt_folder_cache(question_text):
             return None
     return None
 
-# --- CORE LLM GENERATION PIPELINE ENGINE INTERFACE ---
+# --- CORE 3.5-FLASH GENERATION PIPELINE ENGINE ---
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", 
+    model="gemini-3.5-flash", 
     temperature=0,
     max_output_tokens=1000,
     google_api_key=os.getenv("GOOGLE_API_KEY")
 )
 
 # -----------------------------------------------------------------------------
-# VOICE INTERCEPTION & AUDIO TRANSCRIPTION INTERFACE
+# VOICE INTERCEPTION & AUDIO TRANSCRIPTION INTERFACE (GEMINI 3.5-FLASH NATIVE)
 # -----------------------------------------------------------------------------
 st.write("### 🗣️ Ask with Voice")
 audio_output = mic_recorder(
@@ -238,13 +255,13 @@ if audio_output and isinstance(audio_output, dict):
     audio_bytes = audio_output.get("bytes", b"")
     if audio_bytes and st.session_state.voice_query_text == "":
         try:
-            with st.spinner("🎙️ Transcribing speech via Gemini..."):
+            with st.spinner("🎙️ Transcribing speech via Gemini 3.5-Flash..."):
                 audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
                 
                 transcription = native_genai_client.models.generate_content(
-                    model='gemini-1.5-flash',
+                    model='gemini-3.5-flash',
                     contents=[
-                        "Transcribe this audio recording exactly. Do not add any intro comments, greeting text, or conversational pleasantries. Output only the pure text transcription.",
+                        "Transcribe this audio recording exactly. Do not add any introductory remarks, greetings, or explanations. Return only the pure text transcription.",
                         audio_part
                     ]
                 )
@@ -311,7 +328,7 @@ Question:
                     
                     st.subheader("Answer")
                     
-                    # Clean token-streaming configuration via generic output parser
+                    # Token streaming utilizing Gemini 3.5-flash LLM
                     chain = llm | StrOutputParser()
                     full_response = st.write_stream(chain.stream(prompt))
                     
