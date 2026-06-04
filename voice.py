@@ -27,7 +27,7 @@ from streamlit_mic_recorder import mic_recorder
 
 # Configuration setup for caching layer
 EXPORT_DIR = "saved_chats"
-if not os.path.exists(EXPORT_DIR):
+os.makedirs("saved_chats", exist_ok=True)
     os.makedirs(EXPORT_DIR)
 
 st.set_page_config(page_title="Voice & Text RAG Chatbot", layout="wide")
@@ -211,7 +211,7 @@ def check_txt_folder_cache(question_text):
 
 # --- SWITCHED TO STABLE, DIRECT DEVELOPER API-KEY LLM ROUTE ---
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", # Highly stable, fast LTS model for LangChain standard integrations
+    model="gemini-3.5-flash", # Highly stable, fast LTS model for LangChain standard integrations
     temperature=0,
     max_output_tokens=1000,
     google_api_key=os.getenv("GOOGLE_API_KEY")
