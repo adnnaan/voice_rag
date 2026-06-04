@@ -27,8 +27,7 @@ from streamlit_mic_recorder import mic_recorder
 
 # Configuration setup for caching layer
 EXPORT_DIR = "saved_chats"
-os.makedirs("saved_chats", exist_ok=True)
-
+os.makedirs(EXPORT_DIR, exist_ok=True)
 
 st.set_page_config(page_title="Voice & Text RAG Chatbot", layout="wide")
 st.title("🎙️ Voice-Enabled Multi-Source RAG Chatbot")
@@ -45,13 +44,9 @@ if "voice_query_text" not in st.session_state:
 def load_embedding_model():
     api_key = os.getenv("GOOGLE_API_KEY")
     if not api_key:
-        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from your secrets/environment variables.")
+        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from your .env file or Streamlit Secrets.")
         st.stop()
-    # Ensure google_api_key is explicitly mapped right here:
-    return GoogleGenerativeAIEmbeddings(
-        model="models/text-embedding-004",  # Upgrade to the latest stable embedding model standard
-        google_api_key=api_key
-    )
+    return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001", google_api_key=api_key)
 
 @st.cache_resource
 def get_native_genai_client():
@@ -171,7 +166,15 @@ if process_button:
             sidebar_status.write(f"🤖 Generating cloud vectors for {len(chunks)} pieces...")
             sidebar_progress.progress(90)
             
-            vectordb = Chroma.from_documents(documents=chunks, embedding=embeddings_model)
+            # EXPLICIT BINDING: Force live verification key right at the millisecond database building begins
+            live_api_key = os.getenv("GOOGLE_API_KEY")
+            vectordb = Chroma.from_documents(
+                documents=chunks, 
+                embedding=GoogleGenerativeAIEmbeddings(
+                    model="models/gemini-embedding-001",
+                    google_api_key=live_api_key
+                )
+            )
             st.session_state.retriever = vectordb.as_retriever(search_kwargs={"k": 4})
             st.session_state.answer_cache.clear()
             
@@ -213,9 +216,9 @@ def check_txt_folder_cache(question_text):
             return None
     return None
 
-# --- SWITCHED TO STABLE, DIRECT DEVELOPER API-KEY LLM ROUTE ---
+# --- CORE LLM GENERATION PIPELINE ENGINE INTERFACE ---
 llm = ChatGoogleGenerativeAI(
-    model="gemini-3.5-flash", # Highly stable, fast LTS model for LangChain standard integrations
+    model="gemini-1.5-flash", 
     temperature=0,
     max_output_tokens=1000,
     google_api_key=os.getenv("GOOGLE_API_KEY")
@@ -239,7 +242,7 @@ if audio_output and isinstance(audio_output, dict):
                 audio_part = types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")
                 
                 transcription = native_genai_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=[
                         "Transcribe this audio recording exactly. Do not add any intro comments, greeting text, or conversational pleasantries. Output only the pure text transcription.",
                         audio_part
