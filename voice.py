@@ -54,7 +54,7 @@ def get_native_genai_client():
     if not api_key:
         st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from secrets.")
         st.stop()
-    # Explicitly pass the validated api_key string right here
+    # Explicitly pass the validated api_key string right here to fix voice 400 error
     return genai.Client(api_key=api_key)
 
 embeddings_model = load_embedding_model()
@@ -117,7 +117,7 @@ def clean_html_extractor(html: str) -> str:
         
     return clean_text
 
-# Unified Knowledge Base Builder (with Rate Limit 429 Throttle)
+# Unified Knowledge Base Builder (with Rate Limit 429 Throttle Handler)
 if process_button:
     if not uploaded_files and not url_input.strip():
         st.sidebar.error("Please upload at least one PDF OR paste a website URL.")
@@ -167,7 +167,7 @@ if process_button:
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1200, chunk_overlap=200)
             chunks = text_splitter.split_documents(combined_documents)
             
-            # --- EXPLICIT BINDING & RATE LIMIT PROTECTION FOR VECTOR BUILD ---
+            # --- EXPLICIT BINDING & MAXIMUM RATE LIMIT PROTECTION FOR VECTOR BUILD ---
             live_api_key = os.getenv("GOOGLE_API_KEY")
             sidebar_status.write("🤖 Initializing vector workspace...")
             
@@ -176,25 +176,41 @@ if process_button:
                 google_api_key=live_api_key
             )
             
-            # Safe Batch Throttling Loop to prevent 429 Resource Exhausted errors
-            batch_size = 15
             vectordb = None
+            total_chunks = len(chunks)
             
-            for i in range(0, len(chunks), batch_size):
-                batch_chunks = chunks[i:i + batch_size]
-                sidebar_status.write(f"🤖 Embedding chunks {i} to {min(i + batch_size, len(chunks))} of {len(chunks)}...")
-                sidebar_progress.progress(int(85 + ((i / len(chunks)) * 12)))
+            # CRITICAL: Loop individual chunks with a hard time delay to bypass free-tier 429 limits
+            for idx, chunk in enumerate(chunks):
+                sidebar_status.write(f"🤖 Embedding chunk {idx + 1} of {total_chunks}...")
                 
-                if vectordb is None:
-                    vectordb = Chroma.from_documents(
-                        documents=batch_chunks,
-                        embedding=embed_fn
-                    )
-                else:
-                    vectordb.add_documents(documents=batch_chunks)
+                # Update progress smoothly across the final 15% of processing
+                progress_percentage = int(85 + ((idx + 1) / total_chunks) * 14)
+                sidebar_progress.progress(progress_percentage)
                 
-                # Take a small pause to stay cleanly under free tier per-minute thresholds
-                time.sleep(1.0)
+                try:
+                    if vectordb is None:
+                        # Initialize Chroma with the first text chunk
+                        vectordb = Chroma.from_documents(
+                            documents=[chunk],
+                            embedding=embed_fn
+                        )
+                    else:
+                        # Add subsequent text chunks to the database
+                        vectordb.add_documents(documents=[chunk])
+                except Exception as embedding_chunk_err:
+                    # If Google tells us to slow down, wait 5 seconds and retry that specific chunk
+                    if "429" in str(embedding_chunk_err) or "RESOURCE_EXHAUSTED" in str(embedding_chunk_err):
+                        sidebar_status.write("⏳ Hit limit. Pausing 5 seconds to reset tier...")
+                        time.sleep(5.0)
+                        if vectordb is None:
+                            vectordb = Chroma.from_documents(documents=[chunk], embedding=embed_fn)
+                        else:
+                            vectordb.add_documents(documents=[chunk])
+                    else:
+                        raise embedding_chunk_err
+                
+                # Take a small breath after every single successful chunk to respect the free API tier
+                time.sleep(0.8)
             
             st.session_state.retriever = vectordb.as_retriever(search_kwargs={"k": 4})
             st.session_state.answer_cache.clear()
