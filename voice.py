@@ -51,6 +51,10 @@ def load_embedding_model():
 @st.cache_resource
 def get_native_genai_client():
     api_key = os.getenv("GOOGLE_API_KEY")
+    if not api_key:
+        st.error("🚨 Configuration Error: GOOGLE_API_KEY is missing from secrets.")
+        st.stop()
+    # Explicitly pass the validated api_key string right here
     return genai.Client(api_key=api_key)
 
 embeddings_model = load_embedding_model()
